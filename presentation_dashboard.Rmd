@@ -1,0 +1,672 @@
+---
+title: "NLP Survey Dashboard" 
+# author: "Team 9"
+# date: "February 23, 2020"
+output: 
+  flexdashboard::flex_dashboard:
+    source_code: embed
+    vertical_layout: scroll
+    theme: yeti
+    runtime: shiny
+---
+
+
+```{r data prEP, include=FALSE}
+setwd('C:/Users/isabe/OneDrive/Desktop/MSBA-DD/Module B/Text Analytics/Team Project_1/Survey Feedback_final/Survey Questions')
+library(flexdashboard) 
+library(shiny)
+
+# Data cleaning, replacing wrong entries in the target variable (DONE)
+# Changing first two rows of q3 to blank (DONE)
+# Change cousin daughter to thousand dollars (DONE)
+# Drop Blackberry person (DONE)
+# Tokenizing each question separately and then rbind them, keeping
+# two kinds of location info, question and participant (DONE)
+# We keep raw tokenized data frame (DONE)
+# We create frequency counts from tokens (DONE)
+# We create a new data frame joining the AFINN (scores) lexicon - AB
+# We create another data frame joining the nrc (emotions) lexicon - Erick
+# We create a dfm for naive bayes - Luis (DONE)
+# We create the weird structure for correlograms - Luis (DONE)
+# We create a tf_idf table - Bob (DONE)
+# We create the input table for LDA - Erick (DONE)
+# Add data prep to dashboard (DONE)
+# Create visualizations - Isabella (DONE)
+# Add a tab with insights
+
+
+library(tidytext)
+library(readtext)
+library(tidyverse)
+library(ggplot2)
+library(ggrepel)
+library(scales)
+library(quanteda)
+library(RColorBrewer)
+library(tm)
+library(caret)
+library(DT)
+library(textdata)
+library(dplyr)
+library(topicmodels)
+library(plotly)
+library(igraph)
+library(ggraph)
+
+file <- 'q1.txt'
+file2 <- 'q2.txt'
+file3 <- 'q3.txt'
+file4 <- 'q4.txt'
+file5 <- 'q5.txt'
+set.seed(222)
+q1 <- readtext(file)
+q2 <- readtext(file2)
+q3 <- readtext(file3)
+q4 <- readtext(file4)
+q5 <- readtext(file5)
+data(stop_words)
+q1_token <- q1 %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = T)
+q2_token <- q2 %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = T)
+q3_token <- q3 %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = T)
+q4_token <- q4 %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = T)
+q5_token <- q5 %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(word, sort = T)
+
+q1_df <- data.frame(q1 = str_split(q1$text, pattern ="You said"))
+names(q1_df)[1] = "q1"
+q1_df2 <- data.frame(line_num = 1:26, q1 = q1_df[-c(1),])
+q1_df2 <- q1_df2[q1_df2$line_num != 14, ]
+q1_df2 <- q1_df2[q1_df2$line_num != 15, ]
+q2_df <- data.frame(str_split(q2$text, pattern ="You said"))
+names(q2_df)[1] = "q2"
+q2_df2 <- data.frame(q2 = q2_df[-c(1),])
+q3_df <- data.frame(q3=str_split(q3$text, pattern ="You said"))
+names(q3_df)[1] = "q3"
+q3_df2 <- data.frame(q3 = q3_df[-c(1),])
+q4_df <- data.frame(text=str_split(q4$text, pattern ="You said"))
+names(q4_df)[1] = "q4"
+q4_df2 <- data.frame(q4 = q4_df[-c(1),])
+q5_df <- data.frame(text=str_split(q5$text, pattern ="You said"))
+names(q4_df)[1] = "q5"
+q5_df2 <- data.frame(q5 = q5_df[-c(1),])
+df_blank <- data.frame(q5 = c("",""))
+q5_df2 <- rbind(q5_df2, df_blank)
+combine <- cbind(q1_df2, q2_df2, q3_df2, q4_df2, q5_df2)
+combine$line_num <- 1:24
+write.csv(combine, "Questions_combined.csv")
+
+library(stringr)
+
+combine$q1 = as.character(combine$q1)
+
+combine$q2 = as.character(combine$q2)
+
+combine$q3 = as.character(combine$q3)
+
+combine$q4 = as.character(combine$q4)
+
+combine$q5 = as.character(combine$q5)
+
+combine = combine[combine$line_num != 19,]
+
+combine = combine[combine$line_num != 23,]
+
+combine$response = ifelse(str_detect(string = combine$q5, pattern = "Android"), "Android", "iOS")
+
+combine$q3 = str_remove(string = combine$q3, pattern = ",")
+
+combine$q3 = ifelse(str_detect(string = combine$q3, pattern = "Christian"), "1300", combine$q3)
+
+combine$q4 = ifelse(str_detect(string = combine$q4, pattern = "Motel"), "T-Mobile", combine$q4)
+
+combine$q4 = ifelse(str_detect(string = combine$q4, pattern = "T-Mobile"), "TMobile", combine$q4)
+
+combine$q4 = ifelse(str_detect(string = combine$q4, pattern = "AT&T"), "atnt", combine$q4)
+
+combine$q4 = ifelse(str_detect(string = combine$q4, pattern = "mobile"), "TMobile", combine$q4)
+
+combine$response = ifelse(str_detect(string = combine$q5, pattern = "Iowa"), "iOS", combine$response)
+
+combine$response = ifelse(str_detect(string = combine$q5, pattern = "user-friendly"), "iOS", combine$response)
+
+combine$q5 = NULL
+
+combine$q3[1:2] = ""
+
+combine2 <- combine
+
+combine <- rbind(combine, combine2)
+
+# Dataset is tokenized, extra stop words are removed, two words are corrected
+
+combine$q1 = tolower(combine$q1)
+combine$q2 = tolower(combine$q2)
+combine$q3 = tolower(combine$q3)
+combine$q4 = tolower(combine$q4)
+
+tokens_1 = combine %>%
+  unnest_tokens(input = q1, output = word) %>%
+  select(line_num, word, response) %>%
+  mutate(question = "q1")
+
+tokens_2 = combine %>%
+  unnest_tokens(input = q2, output = word) %>%
+  select(line_num, word, response) %>%
+  mutate(question = "q2")
+
+tokens_3 = combine %>%
+  unnest_tokens(input = q3, output = word) %>%
+  select(line_num, word, response) %>%
+  mutate(question = "q3")
+
+tokens_4 = combine %>%
+  unnest_tokens(input = q4, output = word) %>%
+  select(line_num, word, response) %>%
+  mutate(question = "q4")
+
+tokens = rbind(tokens_1, tokens_2, tokens_3, tokens_4)
+
+tokens = tokens %>%
+  anti_join(stop_words)
+
+tokens$word = ifelse(tokens$word == "foster", "faster", tokens$word)
+
+tokens$word = ifelse(tokens$word == "strain", "screen", tokens$word)
+
+tokens = tokens[tokens$word != "milk",]
+
+tokens = tokens[tokens$word != "watches",]
+
+# Dataset is created for correlogram plotting
+
+correl_data = tokens %>%
+  count(response, word) %>%
+  group_by(response) %>%
+  mutate(proportion = n / sum(n)) %>%
+  select(-n) %>%
+  spread(response, proportion)%>%
+  gather(competitor, proportion, Android)
+
+# Dataset is created for NB classifier
+
+nb_df = combine
+
+nb_df$target_iOS = ifelse(nb_df$response == "iOS", 1, 0)
+
+nb_df$response = NULL
+
+nb_1 = nb_df %>%
+  select(q1, target_iOS) %>%
+  rename(text = q1)
+
+nb_2 = nb_df %>%
+  select(q2, target_iOS) %>%
+  rename(text = q2)
+
+nb_3 = nb_df %>%
+  select(q3, target_iOS) %>%
+  rename(text = q3)
+
+nb_4 = nb_df %>%
+  select(q4, target_iOS) %>%
+  rename(text = q4)
+
+nb_df = rbind(nb_1, nb_2, nb_3, nb_4)
+
+nb_corpus = corpus(nb_df$text)
+
+nb.dfm <- dfm(nb_corpus, tolower = TRUE) 
+
+nb.dfm <- dfm_trim(nb.dfm, min_termfreq = 2, min_docfreq = 0)
+
+nb.dfm <- dfm_weight(nb.dfm)
+
+set.seed(222)
+
+test_index = sample(x = seq(1, nrow(nb.dfm)), size = nrow(nb.dfm) * 0.25)
+
+nb_train<-nb.dfm[-test_index,]
+
+nb_test<-nb.dfm[test_index,]
+
+# Sentiment dataframes are created
+
+afinn <- get_sentiments("afinn")
+nrc <- get_sentiments("nrc")
+bing <- get_sentiments("bing")
+
+survey_affin <- tokens %>%
+  inner_join(afinn) %>%
+  summarise(sentiment=sum(value)) %>%
+  mutate(method="AFINN")
+
+bing_and_nrc <- bind_rows(
+  tokens%>%
+    inner_join(bing)%>%
+    mutate(method = "Bing et al."),
+  tokens %>%
+    inner_join(nrc %>%
+                 filter(sentiment %in% c("positive", "negative"))) %>%
+    mutate(method = "NRC")) %>%
+  count(method, sentiment) %>%
+  spread(sentiment, n, fill=0) %>%
+  mutate(sentiment = positive-negative)
+
+### LDA dataframes are created
+
+token_counts = tokens %>%
+  count(word, question)
+  
+
+survey_dtm <- token_counts %>%
+  cast_dtm(question, word, n)
+
+# Data for market analysis
+
+telecom <- data.frame(Company = c("Verizon", "AT&T", "Sprint", "T-Mobile", "Other"),
+                      US_Marketshare = c(29.4, 39.5, 16.4, 13.5, 1.2),
+                      Hult_Students = c(NA, 30, NA, 65, 5))
+
+## Token counts dataframe
+
+token_counts_2 = tokens %>%
+  count(word, question, response) %>%
+  arrange(desc(n))
+
+## tf-idf dataframe
+
+by_response <- combine %>%
+  gather(key = "question", value = "text", q1, q2, q3, q4) %>%
+  unnest_tokens(word, text) %>%
+  anti_join(stop_words) %>%
+  count(response, word, sort = T)
+
+total_word_response <- by_response %>%
+  group_by(response) %>%
+  summarize(total_word = sum(n))
+
+response_total <- left_join(by_response, total_word_response)
+
+response_total <- response_total %>%
+  bind_tf_idf(word, response, n) %>%
+  arrange(desc(tf_idf))
+
+## Bigram tokenization
+
+# Tokenizing by bi-grams
+
+q1_tokens = combine %>%
+  unnest_tokens(bigram, q1, token = "ngrams", n=2) %>%
+  select(bigram, response) %>%
+  mutate(question = "q1")
+
+q2_tokens = combine %>%
+  unnest_tokens(bigram, q2, token = "ngrams", n=2) %>%
+  select(bigram, response) %>%
+  mutate(question = "q2")
+
+q3_tokens = combine %>%
+  unnest_tokens(bigram, q3, token = "ngrams", n=2) %>%
+  select(bigram, response) %>%
+  mutate(question = "q3")
+
+q4_tokens = combine %>%
+  unnest_tokens(bigram, q4, token = "ngrams", n=2) %>%
+  select(bigram, response) %>%
+  mutate(question = "q4")
+
+bi_tokens = rbind(q1_tokens, q2_tokens, q3_tokens, q4_tokens)
+
+bi_tokens <- bi_tokens %>%
+  separate(bigram, c("word1", "word2"), sep = " ")
+
+
+```
+
+<style>
+.colored {
+  background-color: #FAFAFA;
+}
+</style>
+
+
+Tokens summary
+=======================================================================
+
+Row {data-width=150}
+--------------------------------------
+### Box 1
+
+```{r}
+
+participants_n = nrow(combine)
+valueBox(value = participants_n,icon = "fa-user-plus",caption = "Number of respondents",color = "gray")
+
+```
+
+### Box 2
+
+```{r}
+
+unique_ios = nrow(token_counts_2[token_counts_2$response == "iOS", ])
+valueBox(value = unique_ios,icon = "fa-apple",caption = "Total unique iOS tokens",color = "gray")
+
+```
+
+### Box 3
+
+```{r}
+
+unique_android = nrow(token_counts_2[token_counts_2$response == "Android", ])
+valueBox(value = unique_android,icon = "fa-android",caption = "Total unique Android tokens",color = "gray")
+
+```
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+**Sidebar options:**
+
+```{r}
+
+sliderInput(inputId = "top_n", label = "Select max n for plots", min = 5, max = 15, value = 5)
+
+selectInput(inputId = "response_counts", label = "Choose response", choices = c("iOS", "Android"), selected = "iOS")
+
+```
+
+Column {.tabset .tabset-fade data-width=700 .colored }
+--------------------------------------
+
+### Frequent tokens
+
+```{r fig.height=5}
+
+renderPlot({
+  
+  token_counts_2 %>%
+    filter(response == input$response_counts) %>%
+    top_n(input$top_n, n) %>%
+    ggplot(aes(reorder(word, n, sum), n)) +
+    geom_col(show.legend=FALSE, fill = "cornflowerblue") +
+    coord_flip() +
+    labs(x = "word", y = "n")
+  
+})
+
+```
+
+### tf-idf ranking
+
+```{r fig.height=5}
+
+renderPlot({
+  
+  response_total %>%
+    filter(response == input$response_counts) %>%
+    top_n(input$top_n, tf_idf) %>%
+    ggplot(aes(reorder(word, tf_idf, sum), tf_idf)) +
+    geom_col(show.legend=FALSE, fill = "purple1") +
+    coord_flip() +
+    labs(x = "word", y = "tf-idf")
+  
+})
+
+```
+
+Market Analysis
+========================================================================
+
+Column {data-width=375 .colored }
+-----------------------------------------------------------------------
+
+### Market data {.no-padding}
+    
+```{r}
+
+renderPlotly({
+  
+  
+  p <- plot_ly(telecom, hoverinfo = "text", textinfo = 'label+percent') %>%
+  add_pie(labels = ~Company, values = ~US_Marketshare, 
+          domain = list(row = 0, column = 0)) %>%
+  add_pie(labels = ~Company, values = ~Hult_Students, 
+          domain = list(row = 0, column = 1)) %>%
+  layout(title = "Service Provider Difference Between US Market and Hult Students", width = 1010, height = 505,
+         grid = list(rows = 1, columns = 2),
+         annotations = list(list(x = 0.25, y = 1.01, font = list(size = 14),
+                                 text = "US Telecom company Marketshare", 
+                                 xanchor = "center", showarrow = FALSE),
+                            list(x = 0.75, y = 1.01, font = list(size = 14),
+                                 text = "Hult Students' Service Provider", 
+                                 xanchor = "center", showarrow = FALSE)))
+
+
+  p
+  
+  
+})
+
+```
+
+
+Correlation
+========================================================================
+
+ Column {.tabset .tabset-fade data-width=700 .colored }
+-----------------------------------------------------------------------
+
+### Correlogram {.no-padding}
+
+```{r}
+
+renderPlot({
+  
+  ggplot(correl_data, aes(x= proportion, y= iOS, 
+                        color = abs(iOS - proportion)))+
+  geom_abline(color="grey40", lty=2)+
+  geom_jitter(alpha=.1, size=2.5, width=0.3, height=0.3)+
+  geom_text_repel(aes(label=word), check_overlap = TRUE, vjust=1.5) +
+  scale_x_log10(labels = percent_format())+
+  scale_y_log10(labels= percent_format())+
+  scale_color_gradient(limits = c(0,0.001), 
+                       low = "darkslategray4", high = "gray75")+
+  theme(legend.position = "none")+
+  labs(y= "iOS", x= "Android")
+  
+})
+
+```
+
+### Correlation test
+    
+```{r}
+
+corr_info = cor.test(data=correl_data[correl_data$competitor == "Android",],
+         ~proportion + `iOS`)
+
+renderPrint({
+  
+  print(corr_info)
+  
+})
+
+```
+
+
+LDA
+========================================================================
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+
+**Sidebar options:**
+
+```{r}
+
+sliderInput(inputId = "lda_k", label = "Select K for LDA", min = 2, max = 4, value = 2)
+
+```
+
+
+
+ Column {.tabset .tabset-fade .colored }
+-----------------------------------------------------------------------
+
+### Beta {.no-padding}
+
+```{r}
+
+renderPlot({
+  
+ap_lda_2 <- LDA(survey_dtm, k=input$lda_k, control=list(seed=222))
+
+ap_topics_2 <- tidy(ap_lda_2, matrix="beta")
+
+top_terms_2 <- ap_topics_2 %>%
+  group_by(topic) %>%
+  top_n(5, beta) %>%
+  ungroup() %>%
+  arrange(topic, -beta)
+  
+ top_terms_2 %>%
+  mutate(term=reorder(term, beta)) %>%
+  ggplot(aes(term, beta, fill = factor(topic))) +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  coord_flip()
+  
+})
+
+```
+
+### Gamma {.no-padding}
+
+```{r}
+
+renderPlot({
+  
+chapters_lda_4 <- LDA(survey_dtm, k=input$lda_k, control = list(seed=222))
+chapters_gamma_4 <- tidy(chapters_lda_4, matrix="gamma")
+
+chapters_gamma_4 %>%
+  mutate(document=reorder(document, gamma*topic)) %>%
+  ggplot(aes(factor(topic), gamma)) +
+  geom_boxplot()+
+  facet_wrap(~document)
+  
+})
+
+```
+
+
+NB Classifier
+========================================================================
+
+Column {data-width=375 .colored }
+-----------------------------------------------------------------------
+
+### Naive Bayes classifier - Confusion Matrix and metrics {.no-padding}
+    
+```{r}
+
+nb_model = textmodel_nb(nb_train, nb_df$target_iOS[-test_index])
+
+predictions <- predict(nb_model, nb_test)
+
+test_vector = nb_df[test_index, 2]
+
+predictions = as.numeric(predictions)
+
+predictions = ifelse(predictions == 2, 1, 0)
+
+mat = confusionMatrix(data = as.factor(predictions), reference = as.factor(test_vector), dnn = c("Predicted", "Real"))
+
+
+renderPrint({
+  
+  print(mat$table)
+  
+  print("-------------------------------------------------------------")
+  
+  print(mat$byClass)
+  
+})
+
+```
+
+### Naive Bayes classifier - Top words by PcGW
+    
+```{r}
+
+scores = as.data.frame(t(nb_model$PcGw))
+
+scores = cbind(word = rownames(scores), scores)
+
+scores = scores %>%
+  anti_join(stop_words)
+
+scores$`0` = round(scores$`0`, 2)
+
+scores$`1` = round(scores$`1`, 2)
+
+scores = scores[scores$word != 'lot' & 
+                  scores$word != "foster" & 
+                  scores$word != "prefer" & 
+                  scores$word != "." &
+                  scores$word != '"',]
+
+colnames(scores) = c("word", "Android", "iOS")
+
+renderDT({
+  
+  scores
+  
+})
+
+```
+
+Word Context
+========================================================================
+
+Column {data-width=375 .colored }
+-----------------------------------------------------------------------
+
+### Bi-gram network {.no-padding}
+    
+```{r}
+renderPlot({
+  
+  bi_graph <- bi_tokens %>%
+    filter(word1 == "storage" | word2 == "storage" | 
+             word1 == "screen" | word2 == "screen" |
+             word1 == "capacity" | word2 == "capacity" | 
+             word1 == "quality" | word2 == "quality" |
+             word1 == "speed" | word2 == "speed" | 
+             word1 == "stability" | word2 == "stability" |
+             word1 == "synchronization" | word2 == "synchronization" | 
+             word1 == "future" | word2 == "future")%>%
+    graph_from_data_frame()
+  
+  
+  ggraph(bi_graph, layout = "fr") +
+    geom_edge_link()+
+    geom_node_point()+
+    geom_node_text(aes(label=name), vjust =-1.5, hjust=1.5)
+})
+
+```
