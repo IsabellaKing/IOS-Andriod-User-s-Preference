@@ -1,2 +1,2 @@
-# Smartphone Sentiment Analysis - Regarding Functions, Design, Budget, Service Provider, System (iOS or Android)
+# Smartphone Sentiment Analysis - iOS vs. Android
 Using NLP technique, my team conducted a survey to analyze IOS and Android user's preference on the mobile phone's functions, design, budget, service carrier, etc. Using text analytics tools, we transferred the unstructured text data into tidy dataframe, and analyzed and dashboarded the data by using Latent Dirichlet Allocation (LDA) and Naive Bayes Classifier.
